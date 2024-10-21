@@ -56,9 +56,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
     return annotated_image
 
-def extract_landmark_features(model_path:str):
-    # assumes webcam is connected in index 0
-
+def get_model(model_path:str):
     BaseOptions = mp.tasks.BaseOptions
     FaceLandmarker = mp.tasks.vision.FaceLandmarker
     FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
@@ -72,40 +70,30 @@ def extract_landmark_features(model_path:str):
         num_faces=1,
     )
 
-    with FaceLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(0)
-        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    return FaceLandmarker.create_from_options(options)
 
-        if cap.isOpened():
-            for _ in range(7): # discard several frames to allow camera to adjust to lighting
-                success, image_raw = cap.read()
-            if not success:
-                raise Exception('Error reading image from camera')
+def extract_landmark_features(model, image: np.ndarray):
+    # model from get_model
+    # image in rgb format
+    image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+    detection_result = model.detect(image)
+    annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
 
-            image = cv2.cvtColor(image_raw, cv2.COLOR_BGR2RGB)
-
-            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-            detection_result = landmarker.detect(image)
-            annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
-
-            if len(detection_result.face_landmarks) == 0:
-                raise Exception('No face detected')
-            face_landmarks = []
-            for landmark in detection_result.face_landmarks[0]:
-                face_landmarks.append([landmark.x, landmark.y, landmark.z])
-            
-            face_landmarks = np.array(face_landmarks)
-            face_landmarks = face_landmarks[LANDMARK_INDICES]
-        else:
-            raise Exception('Error initializing camera')
-        cap.release()
+    if len(detection_result.face_landmarks) == 0:
+        raise Exception('No face detected')
+    
+    face_landmarks = []
+    for landmark in detection_result.face_landmarks[0]:
+        face_landmarks.append([landmark.x, landmark.y, landmark.z])
+    
+    face_landmarks = np.array(face_landmarks)
+    face_landmarks = face_landmarks[LANDMARK_INDICES]
 
     return face_landmarks, annotated_image
 
 if __name__ == '__main__':
-    extract_landmark_features('../ckpts/face_landmarker.task')
-    face_landmarks, annotated_image = extract_landmark_features('../ckpts/face_landmarker.task')
+    model = get_model('../ckpts/face_landmarker.task')
+    face_landmarks, annotated_image = extract_landmark_features(model)
     annotated_image = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
     cv2.imwrite('annotated_image.jpg', annotated_image)
     print(face_landmarks)
